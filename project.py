@@ -1,14 +1,11 @@
-import json
 import dash
 import pandas as pd
 import plotly.express as px
-# import dash_leaflet as dl
 
 
 from dash import dcc
 from dash import html
 from dash.dependencies import Input, Output
-from dash_extensions.javascript import assign
 
 
 app = dash.Dash(__name__)
@@ -19,61 +16,69 @@ assert isinstance(frame, pd.DataFrame)
 
 frame = frame[frame['FIRE_SIZE'] >= 100]
 STATES = {
-    "Alabama":              "AL",
-    "Alaska":               "AK",
-    "Arizona":              "AZ",
-    "Arkansas":             "AR",
-    "California":           "CA",
-    "Colorado":             "CO",
-    "Connecticut":          "CT",
-    "Delaware":             "DE",
-    "Florida":              "FL",
-    "Georgia":              "GA",
-    "Hawaii":               "HI",
-    "Idaho":                "ID",
-    "Illinois":             "IL",
-    "Indiana":              "IN",
-    "Iowa":                 "IA",
-    "Kansas":               "KS",
-    "Kentucky":             "KY",
-    "Louisiana":            "LA",
-    "Maine":                "ME",
-    "Maryland":             "MD",
-    "Massachusetts":        "MA",
-    "Michigan":             "MI",
-    "Minnesota":            "MN",
-    "Mississippi":          "MS",
-    "Missouri":             "MO",
-    "Montana":              "MT",
-    "Nebraska":             "NE",
-    "Nevada":               "NV",
-    "New Hampshire":        "NH",
-    "New Jersey":           "NJ",
-    "New Mexico":           "NM",
-    "New York":             "NY",
-    "North Carolina":       "NC",
-    "North Dakota":         "ND",
-    "Ohio":                 "OH",
-    "Oklahoma":             "OK",
-    "Oregon":               "OR",
-    "Pennsylvania":         "PA",
-    "Rhode Island":         "RI",
-    "South Carolina":       "SC",
-    "South Dakota":         "SD",
-    "Tennessee":            "TN",
-    "Texas":                "TX",
-    "Utah":                 "UT",
-    "Vermont":              "VT",
-    "Virginia":             "VA",
-    "Washington":           "WA",
-    "West Virginia":        "WV",
-    "Wisconsin":            "WI",
-    "Wyoming":              "WY"
+    "AL": "Alabama",
+    "AK": "Alaska",
+    "AZ": "Arizona",
+    "AR": "Arkansas",
+    "CA": "California",
+    "CO": "Colorado",
+    "CT": "Connecticut",
+    "DE": "Delaware",
+    "FL": "Florida",
+    "GA": "Georgia",
+    "HI": "Hawaii",
+    "ID": "Idaho",
+    "IL": "Illinois",
+    "IN": "Indiana",
+    "IA": "Iowa",
+    "KS": "Kansas",
+    "KY": "Kentucky",
+    "LA": "Louisiana",
+    "ME": "Maine",
+    "MD": "Maryland",
+    "MA": "Massachusetts",
+    "MI": "Michigan",
+    "MN": "Minnesota",
+    "MS": "Mississippi",
+    "MO": "Missouri",
+    "MT": "Montana",
+    "NE": "Nebraska",
+    "NV": "Nevada",
+    "NH": "New Hampshire",
+    "NJ": "New Jersey",
+    "NM": "New Mexico",
+    "NY": "New York",
+    "NC": "North Carolina",
+    "ND": "North Dakota",
+    "OH": "Ohio",
+    "OK": "Oklahoma",
+    "OR": "Oregon",
+    "PA": "Pennsylvania",
+    "RI": "Rhode Island",
+    "SC": "South Carolina",
+    "SD": "South Dakota",
+    "TN": "Tennessee",
+    "TX": "Texas",
+    "UT": "Utah",
+    "VT": "Vermont",
+    "VA": "Virginia",
+    "WA": "Washington",
+    "WV": "West Virginia",
+    "WI": "Wisconsin",
+    "WY": "Wyoming"
 }
 
-geojson_url = "https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json"
-geojson_filter = assign("function(feature, context){return context.props.hideout == feature.id;}")
 
+years = list(range(1992, 2016))
+states = list(set(frame['STATE']))
+sts = []
+for state in states:
+    sts.extend([state] * len(years))
+geoframe = pd.DataFrame({
+    'STATE': sts,
+    'YEAR': years * len(states)
+
+})
 
 def get_center(df):
     lon_min = df['LONGITUDE'].min()
@@ -84,11 +89,6 @@ def get_center(df):
             'lon': (lon_min + lon_max) / 2}
 
 
-CENTERS = {
-    state: get_center(frame[frame['STATE_NAME'] == state])
-    for state in STATES
-}
-
 # with open('./geo.json', 'r', encoding='utf-8') as file:
     # geojson = json.load(file)
 
@@ -97,8 +97,8 @@ app.layout = html.Div(children=[
     html.H1(children='Wildfires in the United States from 1992 to 2015.'),
     dcc.Dropdown(id='slct_state',
                  options=[
-                     {'label': name, 'value': name}
-                     for name in STATES
+                     {'label': name, 'value': code}
+                     for code, name in STATES.items()
                  ],
                  multi=False,
                  placeholder='Select a state'),
@@ -122,6 +122,40 @@ app.layout = html.Div(children=[
 ])
 
 
+
+def create_focused_graph(df, state):
+    fig = px.choropleth(geoframe[geoframe['STATE'] == state], animation_frame='YEAR',
+                    color='STATE',
+                    locations='STATE', color_discrete_map={state: '#EEEEFF' for state in STATES},
+                    locationmode="USA-states", scope="usa",
+                    width=1000, height=700,)
+
+    fig.update_layout(showlegend=False)
+    fig.update_traces(
+       hovertemplate=None,
+       hoverinfo='skip'
+    )
+
+    fig_scatter = px.scatter_geo(df[df['STATE'] == state], lat='LATITUDE', lon='LONGITUDE',
+                                 color="FIRE_SIZE", size='FIRE_SIZE', size_max=20, opacity=0.6,
+                                 width=1000, height=700, animation_frame='YEAR')
+
+    fig_scatter.update_traces(marker=dict(line=dict(width=0)),
+                              selector=dict(mode='markers'))
+
+    if fig_scatter.data:
+        fig.add_trace(
+            fig_scatter.data[0]
+        )
+
+    for i in range(len(fig_scatter.frames)):
+        fig.frames[i].data += (fig_scatter.frames[i].data[0],)
+
+    fig.update_geos(fitbounds='locations')
+
+    return fig
+
+
 @app.callback(
     [Output(component_id='graph', component_property='figure'),
      Output(component_id='container', component_property='children')],
@@ -133,37 +167,16 @@ def update_graph(state, years):
     container = f'Chosen state: {state}'
     min_year, max_year = years
     if state is not None:
-        df = df[df['STATE_NAME'] == state]
+        fig = create_focused_graph(df, state)
+    else:
+        fig = px.scatter_geo(frame, lat='LATITUDE', lon='LONGITUDE', scope='usa',
+                             color="FIRE_SIZE", size='FIRE_SIZE', size_max=20, opacity=0.6,
+                             width=1000, height=700, hover_data=['FIRE_NAME', 'FIRE_SIZE', 'STATE'],
+                             animation_frame='YEAR')
 
-    fig_scatter = px.scatter_geo(df, lat='LATITUDE', lon='LONGITUDE', scope='usa',
-                                 color="FIRE_SIZE", size='FIRE_SIZE', size_max=20, opacity=0.6,
-                                 width=1000, height=700, hover_data=['FIRE_NAME', 'FIRE_SIZE', 'STATE'],
-                                 animation_frame='YEAR')
-
-    fig_scatter.update_traces(marker=dict(line=dict(width=0)),
-                              selector=dict(mode='markers'))
-
-    if state is not None:
-
-        fig = px.choropleth(df, scope='usa', locations='STATE_NAME', color='STATE',
-                            color_discrete_map={state: '#EEEEFF' for state in STATES.values()},
-                            geojson='https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json',
-                            width=1000, height=700, animation_frame='YEAR',
-                            featureidkey='properties.name')
-        if fig_scatter.data:
-            fig.add_trace(
-                fig_scatter.data[0]
-            )
-
-        for i in range(len(fig.frames)):
-            fig.frames[i].data += (fig_scatter.frames[i].data[0],)
-
-        fig.update_geos(fitbounds='locations')
-
-        return fig, container
-
-    return fig_scatter, container
-
+        fig.update_traces(marker=dict(line=dict(width=0)),
+                                  selector=dict(mode='markers'))
+    return fig, container
 
 if __name__ == '__main__':
     app.run_server(debug=True)
