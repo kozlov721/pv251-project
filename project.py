@@ -96,13 +96,6 @@ def get_center(df):
 
 app.layout = html.Div(children=[
     html.H1(children='Wildfires in the United States from 1992 to 2015.'),
-    dcc.Dropdown(id='slct_state',
-                 options=[
-                     {'label': name, 'value': code}
-                     for code, name in STATES.items()
-                 ],
-                 multi=False,
-                 placeholder='Select a state'),
     dcc.Checklist(
         id='is_year_range',
         options=[
@@ -122,40 +115,55 @@ app.layout = html.Div(children=[
     dcc.Graph(id='graph')
 ])
 
+last_click = None
 
 @app.callback(
     [Output(component_id='graph', component_property='figure'),
      Output(component_id='container', component_property='children')],
-    [Input(component_id='slct_state', component_property='value'),
-     Input(component_id='year_range', component_property='value'),
+    [Input(component_id='year_range', component_property='value'),
      Input(component_id='graph', component_property='clickData')]
 )
-def update_graph(state, years, click):
+def update_graph(years, click):
+    global last_click
     pprint(click)
-    if (state is None
-            and click is not None
+    state = None
+    if (click is not None
             and ((loc:=click['points'][0]['location']) is not None
                  or (custom:=click['points'][0].get('customdata')) is not None)):
-        state = loc or custom[0]
+        st = loc or custom[0]
+        if st != last_click:
+            state = last_click = st
     df = frame if state is None else frame[frame['STATE'] == state]
     gf = geoframe if state is None else geoframe[geoframe['STATE'] == state]
     container = f'Chosen state: {state}'
     min_year, max_year = years
-    fig = px.choropleth(gf, animation_frame='YEAR',
-                    color='STATE',
-                    locations='STATE', color_discrete_map={state: '#EEEEFF' for state in STATES},
-                    locationmode="USA-states", scope="usa",
-                    width=1000, height=700,)
+    fig = px.choropleth(gf,
+                        animation_frame='YEAR',
+                        color='STATE',
+                        locations='STATE',
+                        color_discrete_map={state: '#EEEEFF' for state in STATES},
+                        locationmode="USA-states", scope="usa",
+                        width=1000,
+                        height=700)
 
+    fig.update_layout(showlegend=False)
     fig.update_traces(
-        showlegend=False,
         hovertemplate=None,
         hoverinfo='none'
     )
 
-    fig_scatter = px.scatter_geo(df, lat='LATITUDE', lon='LONGITUDE', hover_data=['STATE'],
-                                 color="FIRE_SIZE", size='FIRE_SIZE', size_max=20, opacity=0.6,
-                                 width=1000, height=700, animation_frame='YEAR')
+    fig_scatter = px.scatter_geo(df,
+                                 lat='LATITUDE',
+                                 lon='LONGITUDE',
+                                 hover_data=['STATE'],
+                                 color="FIRE_SIZE",
+                                 size='FIRE_SIZE',
+                                 size_max=20,
+                                 opacity=0.6,
+                                 width=1000,
+                                 height=700,
+                                 animation_frame='YEAR',
+                                 range_color=[0, 606945])
 
     fig_scatter.update_traces(marker=dict(line=dict(width=0)),
                               selector=dict(mode='markers'))
@@ -170,6 +178,8 @@ def update_graph(state, years, click):
 
     if state is not None:
         fig.update_geos(fitbounds='locations')
+
+    fig.layout['coloraxis'] = fig_scatter.layout['coloraxis']
 
     return fig, container
 
