@@ -1,4 +1,5 @@
 import dash
+from pprint import pprint
 import pandas as pd
 import plotly.express as px
 
@@ -122,42 +123,25 @@ app.layout = html.Div(children=[
 ])
 
 
-
-def create_focused_graph(df, state):
-    fig = px.choropleth(geoframe[geoframe['STATE'] == state], animation_frame='YEAR',
-                    color='STATE',
-                    locations='STATE', color_discrete_map={state: '#EEEEFF' for state in STATES},
-                    locationmode="USA-states", scope="usa",
-                    width=1000, height=700,)
-
-    fig.update_layout(showlegend=False)
-    fig.update_traces(
-       hovertemplate=None,
-       hoverinfo='skip'
-    )
-
-    fig_scatter = px.scatter_geo(df[df['STATE'] == state], lat='LATITUDE', lon='LONGITUDE',
-                                 color="FIRE_SIZE", size='FIRE_SIZE', size_max=20, opacity=0.6,
-                                 width=1000, height=700, animation_frame='YEAR')
-
-    fig_scatter.update_traces(marker=dict(line=dict(width=0)),
-                              selector=dict(mode='markers'))
-
-    if fig_scatter.data:
-        fig.add_trace(
-            fig_scatter.data[0]
-        )
-
-    for i in range(len(fig_scatter.frames)):
-        fig.frames[i].data += (fig_scatter.frames[i].data[0],)
-
-    fig.update_geos(fitbounds='locations')
-    # fig.on_click(lambda *args: print(args))
-
-    return fig
-
-def create_default_graph(df):
-    fig = px.choropleth(geoframe, animation_frame='YEAR',
+@app.callback(
+    [Output(component_id='graph', component_property='figure'),
+     Output(component_id='container', component_property='children')],
+    [Input(component_id='slct_state', component_property='value'),
+     Input(component_id='year_range', component_property='value'),
+     Input(component_id='graph', component_property='clickData')]
+)
+def update_graph(state, years, click):
+    pprint(click)
+    if (state is None
+            and click is not None
+            and ((loc:=click['points'][0]['location']) is not None
+                 or (custom:=click['points'][0].get('customdata')) is not None)):
+        state = loc or custom[0]
+    df = frame if state is None else frame[frame['STATE'] == state]
+    gf = geoframe if state is None else geoframe[geoframe['STATE'] == state]
+    container = f'Chosen state: {state}'
+    min_year, max_year = years
+    fig = px.choropleth(gf, animation_frame='YEAR',
                     color='STATE',
                     locations='STATE', color_discrete_map={state: '#EEEEFF' for state in STATES},
                     locationmode="USA-states", scope="usa",
@@ -184,24 +168,9 @@ def create_default_graph(df):
     for i in range(len(fig_scatter.frames)):
         fig.frames[i].data += (fig_scatter.frames[i].data[0],)
 
-    return fig
-
-@app.callback(
-    [Output(component_id='graph', component_property='figure'),
-     Output(component_id='container', component_property='children')],
-    [Input(component_id='slct_state', component_property='value'),
-     Input(component_id='year_range', component_property='value'),
-     Input(component_id='graph', component_property='clickData')]
-)
-def update_graph(state, years, click):
-    print(click)
-    df = frame
-    container = f'Chosen state: {state}'
-    min_year, max_year = years
     if state is not None:
-        fig = create_focused_graph(df, state)
-    else:
-        fig = create_default_graph(df)
+        fig.update_geos(fitbounds='locations')
+
     return fig, container
 
 if __name__ == '__main__':
