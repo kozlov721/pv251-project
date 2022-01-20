@@ -152,30 +152,56 @@ def create_focused_graph(df, state):
         fig.frames[i].data += (fig_scatter.frames[i].data[0],)
 
     fig.update_geos(fitbounds='locations')
+    # fig.on_click(lambda *args: print(args))
 
     return fig
 
+def create_default_graph(df):
+    fig = px.choropleth(geoframe, animation_frame='YEAR',
+                    color='STATE',
+                    locations='STATE', color_discrete_map={state: '#EEEEFF' for state in STATES},
+                    locationmode="USA-states", scope="usa",
+                    width=1000, height=700,)
+
+    fig.update_traces(
+        showlegend=False,
+        hovertemplate=None,
+        hoverinfo='none'
+    )
+
+    fig_scatter = px.scatter_geo(df, lat='LATITUDE', lon='LONGITUDE', hover_data=['STATE'],
+                                 color="FIRE_SIZE", size='FIRE_SIZE', size_max=20, opacity=0.6,
+                                 width=1000, height=700, animation_frame='YEAR')
+
+    fig_scatter.update_traces(marker=dict(line=dict(width=0)),
+                              selector=dict(mode='markers'))
+
+    if fig_scatter.data:
+        fig.add_trace(
+            fig_scatter.data[0]
+        )
+
+    for i in range(len(fig_scatter.frames)):
+        fig.frames[i].data += (fig_scatter.frames[i].data[0],)
+
+    return fig
 
 @app.callback(
     [Output(component_id='graph', component_property='figure'),
      Output(component_id='container', component_property='children')],
     [Input(component_id='slct_state', component_property='value'),
-     Input(component_id='year_range', component_property='value')]
+     Input(component_id='year_range', component_property='value'),
+     Input(component_id='graph', component_property='clickData')]
 )
-def update_graph(state, years):
-    df = frame.copy()
+def update_graph(state, years, click):
+    print(click)
+    df = frame
     container = f'Chosen state: {state}'
     min_year, max_year = years
     if state is not None:
         fig = create_focused_graph(df, state)
     else:
-        fig = px.scatter_geo(frame, lat='LATITUDE', lon='LONGITUDE', scope='usa',
-                             color="FIRE_SIZE", size='FIRE_SIZE', size_max=20, opacity=0.6,
-                             width=1000, height=700, hover_data=['FIRE_NAME', 'FIRE_SIZE', 'STATE'],
-                             animation_frame='YEAR')
-
-        fig.update_traces(marker=dict(line=dict(width=0)),
-                                  selector=dict(mode='markers'))
+        fig = create_default_graph(df)
     return fig, container
 
 if __name__ == '__main__':
