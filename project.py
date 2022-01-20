@@ -169,39 +169,71 @@ def update_graph(years, click, button):
     global last_click
     global prev_years
     global DEFAULT_GRAPH
-    if years != prev_years:
-        DEFAULT_GRAPH = make_graph(
-            filter_year(frame, *years),
-            filter_year(geoframe, *years),
-            False)
-    pprint(click)
+    # pprint(click)
     ctx = dash.callback_context
-    # print(ctx.triggered)
-    # print(ctx.states)
-    # print(ctx.inputs)
-    if click is None or ctx.triggered[0]['prop_id'] == 'button.n_clicks':
-        if ctx.triggered[0]['prop_id'] != 'year_range.value':
-            return DEFAULT_GRAPH, 'Whole country'
+    print(ctx.triggered)
+    print(ctx.states)
+    print(ctx.inputs)
+    # if click is None or ctx.triggered[0]['prop_id'] == 'button.n_clicks':
+        # if ctx.triggered[0]['prop_id'] != 'year_range.value':
+            # return DEFAULT_GRAPH, 'Whole country'
 
-    if ((location := click['points'][0]['location']) is not None
-            or (location := click['points'][0]
-                .get('customdata', [None])[0]) is not None):
+    # if ((location := click['points'][0]['location']) is not None
+            # or (location := click['points'][0]
+                # .get('customdata', [None])[0]) is not None):
 
-        state = location
-    else:
-        raise dash.exceptions.PreventUpdate
+        # state = location
+    # else:
+        # raise dash.exceptions.PreventUpdate
 
-    if state == last_click:
-        last_click = None
-        return DEFAULT_GRAPH, 'Whole country'
-    else:
-        last_click = state
+    # if state == last_click:
+        # last_click = None
+        # return DEFAULT_GRAPH, 'Whole country'
+    # else:
+        # last_click = state
 
-    df = filter_year(frame[frame['STATE'] == state], *years)
-    gf = filter_year(geoframe[geoframe['STATE'] == state], *years)
-    container = f'Chosen state: {state}'
+    # df = filter_year(frame[frame['STATE'] == state], *years)
+    # gf = filter_year(geoframe[geoframe['STATE'] == state], *years)
+    # container = f'Chosen state: {state}'
 
-    return make_graph(df, gf, True), container
+    return DEFAULT_GRAPH, ''
+# def update_graph(years, click, button):
+    # global last_click
+    # global prev_years
+    # global DEFAULT_GRAPH
+    # if years != prev_years:
+        # DEFAULT_GRAPH = make_graph(
+            # filter_year(frame, *years),
+            # filter_year(geoframe, *years),
+            # False)
+    # pprint(click)
+    # ctx = dash.callback_context
+    # # print(ctx.triggered)
+    # # print(ctx.states)
+    # # print(ctx.inputs)
+    # if click is None or ctx.triggered[0]['prop_id'] == 'button.n_clicks':
+        # if ctx.triggered[0]['prop_id'] != 'year_range.value':
+            # return DEFAULT_GRAPH, 'Whole country'
+
+    # if ((location := click['points'][0]['location']) is not None
+            # or (location := click['points'][0]
+                # .get('customdata', [None])[0]) is not None):
+
+        # state = location
+    # else:
+        # raise dash.exceptions.PreventUpdate
+
+    # if state == last_click:
+        # last_click = None
+        # return DEFAULT_GRAPH, 'Whole country'
+    # else:
+        # last_click = state
+
+    # df = filter_year(frame[frame['STATE'] == state], *years)
+    # gf = filter_year(geoframe[geoframe['STATE'] == state], *years)
+    # container = f'Chosen state: {state}'
+
+    # return make_graph(df, gf, True), container
 
 
 if __name__ == '__main__':
