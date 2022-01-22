@@ -1,5 +1,4 @@
 import dash
-from pprint import pprint
 import pandas as pd
 import plotly.express as px
 from plotly.subplots import make_subplots
@@ -69,6 +68,20 @@ class App:
             'WI': 'Wisconsin',
             'WY': 'Wyoming'
         }
+        self.COLORS = ['#545ED2',
+                       '#C34936',
+                       '#04A880',
+                       '#9057D6',
+                       '#E38C59',
+                       '#25B3D2',
+                       '#DD5C86',
+                       '#A5C374',
+                       '#DB81D9',
+                       '#D6AB50',
+                       '#A9ACDA',
+                       '#D08E88',
+                       '#D10B12']
+
         self.FRAME: Final[pd.DataFrame] = cast(pd.DataFrame,
                                                pd.read_csv(data_path))
         self.MIN_SIZE: Final[int] = 0
@@ -80,7 +93,7 @@ class App:
         self.GEOFRAME: Final[pd.DataFrame] = self._make_geoframe()
         self.CAUSES: Final[List[str]] = self.FRAME['STAT_CAUSE_DESCR'].unique()
 
-        self.state_filter: Optional[str] = None
+        self.states_filter: Set[str] = set()
         self.cause_filter: Set[str] = set()
         self.years_filter: Tuple[int, int] = (self.MAX_YEAR, self.MAX_YEAR)
         self.size_filter: Tuple[int, int] = (100, self.MAX_SIZE)
@@ -105,7 +118,6 @@ class App:
                           pie_click,
                           *args) -> Tuple[Figure, Figure, str]:
             ctx = dash.callback_context
-            print(self.cause_filter)
             trigger = ctx.triggered[0]['prop_id']
             redraw_full = redraw_pie = redraw_focused = False
             if trigger == 'year_range.value':
@@ -113,7 +125,7 @@ class App:
                 self.years_filter = years
             elif trigger == 'pie.clickData':
                 self.cause_filter.add(pie_click['points'][0]['label'])
-                redraw_full = redraw_focused = True
+                redraw_full = redraw_focused = redraw_pie = True
             elif trigger == 'map.clickData':
                 if (state := self._click_to_state(map_click)) is not None:
                     self.state_filter = state
@@ -127,8 +139,6 @@ class App:
             elif trigger == 'reset_causes_button.n_clicks':
                 redraw_pie = redraw_full = redraw_focused = True
                 self.cause_filter.clear()
-            print(
-                f'pie: {redraw_pie}, full: {redraw_full}, focused {redraw_focused}')
             return self._update_layout(redraw_pie, redraw_full, redraw_focused)
 
         self._listen_events = self.app.callback(
@@ -140,7 +150,7 @@ class App:
              Input('pie', 'clickData'),
              Input('zoom_back_button', 'n_clicks'),
              Input('reset_causes_button', 'n_clicks')]
-        )(lambda *args: listen_events(self, *args))
+        )(lambda *args, **kwargs: listen_events(self, *args, **kwargs))
 
         self.app.layout = html.Div(children=[
             html.H1(
@@ -165,7 +175,7 @@ class App:
                            className='me-1',
                            color='primary'),
             ]),
-            html.Div(id='container', children=[]),
+            html.Div(id='container', children='Focused on: Whole country'),
 
             dcc.Graph(id='map', figure=self.full_map),
             dcc.Graph(
@@ -215,7 +225,7 @@ class App:
             message = 'Focused on: Whole country'
         else:
             message = f'Focused on: {self.STATES[self.state_filter]}'
-        if self.focused_map is not None:
+        if self.focused_map is not None and self.state_filter is not None:
             return self.focused_map, self.pie_chart, message
         return self.full_map, self.pie_chart, message
 
@@ -313,11 +323,6 @@ class App:
     def _make_pie_charts(self,
                          df: pd.DataFrame) -> Figure:
 
-        pull = list(map(lambda x: 0.1
-                        if x in self.cause_filter
-                        else 0,
-                        self.CAUSES))
-
         def calculateTextpositions(values):
             total = sum(values)
             if total == 0:
@@ -333,35 +338,26 @@ class App:
             specs=[[{'type': 'domain'}, {'type': 'domain'}]],
             subplot_titles=['Total Area', 'Number of incidents'])
 
-        fig.add_trace(
-            go.Pie(
-                labels=self.CAUSES,
-                values=(total_area := [
-                    sum(df[df['STAT_CAUSE_DESCR'] == cause]['FIRE_SIZE'])
-                    for cause in self.CAUSES
-                ]),
-                name='Total Area',
-                textposition=calculateTextpositions(total_area),
-                pull=pull
-            ),
-            1,
-            1
-        )
-        fig.add_trace(
-            go.Pie(
-                labels=self.CAUSES,
-                values=(total_count := [
-                    len(df[df['STAT_CAUSE_DESCR'] == cause])
-                    for cause in self.CAUSES
-                ]),
-                name='Number of Fire Area',
-                textposition=calculateTextpositions(total_count),
-                pull=pull
-            ),
-            1,
-            2
-        )
-        fig.update_traces(hole=.4, hoverinfo='label+percent')
+        for col, values in enumerate([
+            [sum(df[df['STAT_CAUSE_DESCR'] == cause]['FIRE_SIZE'])
+             for cause in self.CAUSES],
+            [len(df[df['STAT_CAUSE_DESCR'] == cause])
+             for cause in self.CAUSES]
+        ]):
+
+            fig.add_trace(
+                go.Pie(
+                    labels=self.CAUSES,
+                    values=values,
+                    hole=.4,
+                    hoverinfo="label+percent",
+                    textposition=calculateTextpositions(values),
+                    marker_colors=self.COLORS
+                ),
+                1,
+                col + 1
+            )
+
         fig.update_layout(height=600,
                           width=1000,
                           title_text='Statistical causes of the fires')
