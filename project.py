@@ -6,390 +6,384 @@ from plotly.subplots import make_subplots
 from plotly.graph_objs._figure import Figure
 import plotly.graph_objects as go
 
-
 from dash import dcc
 from dash import html
+from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output
 
-from typing import Optional, Tuple, List, Union, Any, Dict, cast
-
-app = dash.Dash(__name__)
-
-frame = cast(pd.DataFrame, pd.read_csv('/home/martin/Disk/fires.csv'))
-MIN_YEAR = frame['FIRE_YEAR'].min()
-MAX_YEAR = frame['FIRE_YEAR'].max()
-
-frame = frame[frame['FIRE_SIZE'] >= 100]
-
-PIE_LABELS = [
-    'Structure',
-    'Powerline',
-    'Children',
-    'Campfire',
-    'Miscellaneous',
-    'Railroad',
-    'Debris Burning',
-    'Lightning',
-    'Smoking',
-    'Missing/Undefined',
-    'Equipment Use',
-    'Fireworks',
-    'Arson'
-]
-
-STATES = {
-    'AL': 'Alabama',
-    'AK': 'Alaska',
-    'AZ': 'Arizona',
-    'AR': 'Arkansas',
-    'CA': 'California',
-    'CO': 'Colorado',
-    'CT': 'Connecticut',
-    'DE': 'Delaware',
-    'FL': 'Florida',
-    'GA': 'Georgia',
-    'HI': 'Hawaii',
-    'ID': 'Idaho',
-    'IL': 'Illinois',
-    'IN': 'Indiana',
-    'IA': 'Iowa',
-    'KS': 'Kansas',
-    'KY': 'Kentucky',
-    'LA': 'Louisiana',
-    'ME': 'Maine',
-    'MD': 'Maryland',
-    'MA': 'Massachusetts',
-    'MI': 'Michigan',
-    'MN': 'Minnesota',
-    'MS': 'Mississippi',
-    'MO': 'Missouri',
-    'MT': 'Montana',
-    'NE': 'Nebraska',
-    'NV': 'Nevada',
-    'NH': 'New Hampshire',
-    'NJ': 'New Jersey',
-    'NM': 'New Mexico',
-    'NY': 'New York',
-    'NC': 'North Carolina',
-    'ND': 'North Dakota',
-    'OH': 'Ohio',
-    'OK': 'Oklahoma',
-    'OR': 'Oregon',
-    'PA': 'Pennsylvania',
-    'RI': 'Rhode Island',
-    'SC': 'South Carolina',
-    'SD': 'South Dakota',
-    'TN': 'Tennessee',
-    'TX': 'Texas',
-    'UT': 'Utah',
-    'VT': 'Vermont',
-    'VA': 'Virginia',
-    'WA': 'Washington',
-    'WV': 'West Virginia',
-    'WI': 'Wisconsin',
-    'WY': 'Wyoming'
-}
+from typing import Optional, Final, Tuple, Set, List, Any, Dict, cast
 
 
-years = list(range(1992, 2016))
-states = list(STATES.keys())
-sts = []
-for state in states:
-    sts.extend([state] * len(years))
-geoframe = pd.DataFrame({
-    'STATE': sts,
-    'FIRE_YEAR': years * len(states)
+class App:
+    def __init__(self, data_path: str):
+        self.STATES = {
+            'AL': 'Alabama',
+            'AK': 'Alaska',
+            'AZ': 'Arizona',
+            'AR': 'Arkansas',
+            'CA': 'California',
+            'CO': 'Colorado',
+            'CT': 'Connecticut',
+            'DE': 'Delaware',
+            'FL': 'Florida',
+            'GA': 'Georgia',
+            'HI': 'Hawaii',
+            'ID': 'Idaho',
+            'IL': 'Illinois',
+            'IN': 'Indiana',
+            'IA': 'Iowa',
+            'KS': 'Kansas',
+            'KY': 'Kentucky',
+            'LA': 'Louisiana',
+            'ME': 'Maine',
+            'MD': 'Maryland',
+            'MA': 'Massachusetts',
+            'MI': 'Michigan',
+            'MN': 'Minnesota',
+            'MS': 'Mississippi',
+            'MO': 'Missouri',
+            'MT': 'Montana',
+            'NE': 'Nebraska',
+            'NV': 'Nevada',
+            'NH': 'New Hampshire',
+            'NJ': 'New Jersey',
+            'NM': 'New Mexico',
+            'NY': 'New York',
+            'NC': 'North Carolina',
+            'ND': 'North Dakota',
+            'OH': 'Ohio',
+            'OK': 'Oklahoma',
+            'OR': 'Oregon',
+            'PA': 'Pennsylvania',
+            'RI': 'Rhode Island',
+            'SC': 'South Carolina',
+            'SD': 'South Dakota',
+            'TN': 'Tennessee',
+            'TX': 'Texas',
+            'UT': 'Utah',
+            'VT': 'Vermont',
+            'VA': 'Virginia',
+            'WA': 'Washington',
+            'WV': 'West Virginia',
+            'WI': 'Wisconsin',
+            'WY': 'Wyoming'
+        }
+        self.FRAME: Final[pd.DataFrame] = cast(pd.DataFrame,
+                                               pd.read_csv(data_path))
+        self.MIN_SIZE: Final[int] = 0
+        self.MAX_SIZE: Final[int] = self.FRAME['FIRE_SIZE'].max()
+        self.MIN_YEAR: Final[int] = self.FRAME['FIRE_YEAR'].min()
+        self.MAX_YEAR: Final[int] = self.FRAME['FIRE_YEAR'].max()
+        self.YEARS: Final[List[int]] = list(
+            range(self.MIN_YEAR, self.MAX_YEAR + 1))
+        self.GEOFRAME: Final[pd.DataFrame] = self._make_geoframe()
+        self.CAUSES: Final[List[str]] = self.FRAME['STAT_CAUSE_DESCR'].unique()
 
-})
+        self.state_filter: Optional[str] = None
+        self.cause_filter: Set[str] = set()
+        self.years_filter: Tuple[int, int] = (self.MAX_YEAR, self.MAX_YEAR)
+        self.size_filter: Tuple[int, int] = (100, self.MAX_SIZE)
+        self.full_map: Figure = self._make_map(
+            self._filter_all(self.FRAME),
+            self.GEOFRAME,
+            focus=False
+        )
+        self.pie_chart: Figure = self._make_pie_charts(
+            self._filter_all(self.FRAME, exclude=['STAT_CAUSE_DESCR'])
+        )
+        self.focused_map: Optional[Figure] = None
 
+        self.app = dash.Dash(
+            __name__,
+            external_stylesheets=[dbc.themes.BOOTSTRAP]
+        )
 
-def filter_year(df: pd.DataFrame,
-                min_year: int,
-                max_year: int) -> pd.DataFrame:
-    return df[(df['FIRE_YEAR'] >= min_year) & (df['FIRE_YEAR'] <= max_year)]
+        def listen_events(self,
+                          years: Tuple[int, int],
+                          map_click,
+                          pie_click,
+                          *args) -> Tuple[Figure, Figure, str]:
+            ctx = dash.callback_context
+            print(self.cause_filter)
+            trigger = ctx.triggered[0]['prop_id']
+            redraw_full = redraw_pie = redraw_focused = False
+            if trigger == 'year_range.value':
+                redraw_full = redraw_pie = redraw_focused = True
+                self.years_filter = years
+            elif trigger == 'pie.clickData':
+                self.cause_filter.add(pie_click['points'][0]['label'])
+                redraw_full = redraw_focused = True
+            elif trigger == 'map.clickData':
+                if (state := self._click_to_state(map_click)) is not None:
+                    self.state_filter = state
+                else:
+                    raise PreventUpdate
+                redraw_pie = redraw_focused = True
+            elif trigger == 'zoom_back_button.n_clicks':
+                redraw_pie = True
+                self.state_filter = None
+                self.focused_map = None
+            elif trigger == 'reset_causes_button.n_clicks':
+                redraw_pie = redraw_full = redraw_focused = True
+                self.cause_filter.clear()
+            print(
+                f'pie: {redraw_pie}, full: {redraw_full}, focused {redraw_focused}')
+            return self._update_layout(redraw_pie, redraw_full, redraw_focused)
 
+        self._listen_events = self.app.callback(
+            [Output('map', 'figure'),
+             Output('pie', 'figure'),
+             Output('container', 'children')],
+            [Input('year_range', 'value'),
+             Input('map', 'clickData'),
+             Input('pie', 'clickData'),
+             Input('zoom_back_button', 'n_clicks'),
+             Input('reset_causes_button', 'n_clicks')]
+        )(lambda *args: listen_events(self, *args))
 
-def filter_frame(df: pd.DataFrame,
-                 filters: Dict[str, Optional[Any]]) -> pd.DataFrame:
+        self.app.layout = html.Div(children=[
+            html.H1(
+                children='Wildfires in the United States from 1992 to 2015.'
+            ),
+            dcc.RangeSlider(
+                id='year_range',
+                marks={i: str(i)
+                       for i in range(self.MIN_YEAR, self.MAX_YEAR + 1)},
+                min=self.MIN_YEAR,
+                max=self.MAX_YEAR,
+                value=[2015, 2015],
+                allowCross=False
+            ),
+            html.Div([
+                dbc.Button('Zoom back',
+                           id='zoom_back_button',
+                           className='me-1',
+                           color='primary'),
+                dbc.Button('Reset causes',
+                           id='reset_causes_button',
+                           className='me-1',
+                           color='primary'),
+            ]),
+            html.Div(id='container', children=[]),
 
-    for col, value in filters.items():
-        if value is None:
-            continue
-        if col == 'FIRE_YEAR':
-            df = filter_year(df, *value)
+            dcc.Graph(id='map', figure=self.full_map),
+            dcc.Graph(
+                id='pie',
+                figure=self.pie_chart
+            )
+        ])
+
+    def _make_geoframe(self) -> pd.DataFrame:
+        states = []
+        for state in self.STATES:
+            states.extend([state] * len(self.YEARS))
+        return pd.DataFrame({
+            'STATE': states,
+            'FIRE_YEAR': self.YEARS * len(self.STATES)
+        })
+
+    def _update_layout(self,
+                       redraw_pie: bool,
+                       redraw_full: bool,
+                       redraw_focused: bool
+                       ) -> Tuple[Figure, Figure, str]:
+        if not redraw_pie and not redraw_full and not redraw_focused:
+            raise PreventUpdate
+        if redraw_pie:
+            self.pie_chart = self._make_pie_charts(
+                self._filter_all(self.FRAME, exclude=['STAT_CAUSE_DESCR'])
+            )
+        if redraw_full:
+            self.full_map = self._make_map(
+                self._filter(
+                    self.FRAME,
+                    {'FIRE_YEAR': self.years_filter,
+                     'STAT_CAUSE_DESCR': self.cause_filter,
+                     'FIRE_SIZE': self.size_filter}
+                ),
+                self.GEOFRAME,
+                focus=False
+            )
+        if redraw_focused:
+            self.focused_map = self._make_map(
+                self._filter_all(self.FRAME),
+                self._filter(self.GEOFRAME, {'STATE': self.state_filter}),
+                focus=True
+            )
+        if self.state_filter is None:
+            message = 'Focused on: Whole country'
         else:
-            df = df[df[col] == value]
+            message = f'Focused on: {self.STATES[self.state_filter]}'
+        if self.focused_map is not None:
+            return self.focused_map, self.pie_chart, message
+        return self.full_map, self.pie_chart, message
 
-    return df
+    def _filter(self,
+                df: pd.DataFrame,
+                filters: Dict[str, Optional[Any]]) -> pd.DataFrame:
 
+        for col, value in filters.items():
+            if value is None:
+                continue
+            elif col == 'FIRE_YEAR' or col == 'FIRE_SIZE':
+                min_, max_ = value
+                df = df[(df[col] >= min_) &
+                        (df[col] <= max_)]
+            elif col == 'STAT_CAUSE_DESCR':
+                if value:
+                    bool_vector = df['STAT_CAUSE_DESCR'] == ''
+                    for cause in value:
+                        bool_vector |= df['STAT_CAUSE_DESCR'] == cause
+                    df = df[bool_vector]
+            else:
+                df = df[df[col] == value]
 
-def filter_frames(df: pd.DataFrame,
-                  gf: pd.DataFrame,
-                  filters: Dict[str, Optional[Any]]
-                  ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    return tuple(filter_frame(frame, filters) for frame in [df, gf])
+        return df
 
+    def _filter_all(self,
+                    df: pd.DataFrame,
+                    exclude: Optional[List] = None) -> pd.DataFrame:
 
-def make_map(df: pd.DataFrame,
-             gf: pd.DataFrame,
-             focus: bool) -> Figure:
-
-    fig = px.choropleth(
-        gf,
-        color='STATE',
-        locations='STATE',
-        color_discrete_map={state: '#EEEEFF' for state in STATES},
-        locationmode="USA-states", scope="usa",
-        width=1000,
-        height=700)
-
-    fig.update_layout(showlegend=False)
-    fig.update_traces(
-        hovertemplate=None,
-        hoverinfo='none'
-    )
-
-    fig_scatter = px.scatter_geo(
-        df,
-        lat='LATITUDE',
-        lon='LONGITUDE',
-        hover_data=['STATE', 'STAT_CAUSE_DESCR'],
-        color="FIRE_SIZE",
-        size='FIRE_SIZE',
-        size_max=20,
-        opacity=0.6,
-        width=1000,
-        height=700,
-        range_color=[0, 606945]
-    )
-
-    if focus:
-        fig.update_geos(fitbounds='locations')
-    else:
-        fig.update_geos(visible=False)
-
-    fig_scatter.update_traces(marker=dict(line=dict(width=0)),
-                              selector=dict(mode='markers'))
-
-    if fig_scatter.data:
-        fig.add_trace(
-            fig_scatter.data[0]
-        )
-
-    fig.layout['coloraxis'] = fig_scatter.layout['coloraxis']
-    fig.update_layout(
-        dragmode=False,
-        transition={'duration': 300, 'easing': 'cubic-in-out'}
-    )
-
-    return fig
-
-
-def make_pie_charts(df: pd.DataFrame) -> Figure:
-
-    def calculateTextpositions(values):
-        total = sum(values)
-        if total == 0:
-            return 'auto'
-        return [
-            'none' if value / total < 0.02 else 'auto'
-            for value in values
-        ]
-
-    fig = make_subplots(
-        1,
-        2,
-        specs=[[{'type': 'domain'}, {'type': 'domain'}]],
-        subplot_titles=['Total Area', 'Number of incidents'])
-
-    fig.add_trace(
-        go.Pie(
-            labels=PIE_LABELS,
-            values=(total_area := [
-                sum(df[df['STAT_CAUSE_DESCR'] == cause]['FIRE_SIZE'])
-                for cause in PIE_LABELS
-            ]),
-            name='Total Area',
-            textposition=calculateTextpositions(total_area)
-            ),
-        1,
-        1
-    )
-    fig.add_trace(
-        go.Pie(
-            labels=PIE_LABELS,
-            values=(total_count := [
-                len(df[df['STAT_CAUSE_DESCR'] == cause])
-                for cause in PIE_LABELS
-            ]),
-            name='Number of Fire Area',
-            textposition=calculateTextpositions(total_count)
-            ),
-        1,
-        2
-    )
-    fig.update_traces(hole=.4, hoverinfo="label+percent")
-    fig.update_layout(height=600,
-                      width=1000,
-                      title_text='Statistical causes of the fires')
-    fig.update_layout(
-        legend=dict(
-            orientation="h"
-        ),
-        transition={'duration': 300, 'easing': 'cubic-in-out'}
-    )
-
-    assert isinstance(fig, Figure)
-    return fig
-
-
-curr_years: Tuple[int, int] = (MAX_YEAR, MAX_YEAR)
-curr_cause: Optional[str] = None
-focused_state: Optional[str] = None
-
-DEFAULT_GRAPH = make_map(
-    filter_year(frame, *curr_years),
-    filter_year(geoframe, *curr_years),
-    False,
-)
-
-app.layout = html.Div(children=[
-    html.H1(children='Wildfires in the United States from 1992 to 2015.'),
-    dcc.RangeSlider(
-        id='year_range',
-        marks={i: str(i) for i in range(MIN_YEAR, MAX_YEAR + 1)},
-        min=MIN_YEAR,
-        max=MAX_YEAR,
-        value=[2015, 2015],
-        allowCross=False
-    ),
-    html.Button('Zoom back', id='button'),
-    html.Div(id='container', children=[]),
-
-    dcc.Graph(id='map', figure=DEFAULT_GRAPH),
-    dcc.Graph(id='pie',
-              figure=make_pie_charts(filter_year(frame, *curr_years)))
-])
-
-
-def update_years(years) -> Tuple[Figure, Figure, str]:
-    global DEFAULT_GRAPH
-    global curr_years
-    curr_years = years
-    df = filter_year(frame, *curr_years)
-    DEFAULT_GRAPH = make_map(
-        df,
-        geoframe,
-        False
-    )
-    if focused_state is not None:
-        df = filter_frame(
+        return self._filter(
             df,
-            {
-                'STATE': focused_state,
-                'STAT_CAUSE_DESCR': curr_cause
-            }
+            {col: fil for col, fil in [('FIRE_YEAR', self.years_filter),
+                                       ('STATE', self.state_filter),
+                                       ('STAT_CAUSE_DESCR', self.cause_filter),
+                                       ('FIRE_SIZE', self.size_filter)]
+             if exclude is None or col not in exclude
+             }
         )
-        return (
-            make_map(
-                df,
-                filter_frame(geoframe, {'STATE': focused_state}),
-                True
+
+    def _make_map(self,
+                  df: pd.DataFrame,
+                  gf: pd.DataFrame,
+                  focus: bool) -> Figure:
+
+        fig = px.choropleth(
+            gf,
+            color='STATE',
+            locations='STATE',
+            color_discrete_map={state: '#EEEEFF' for state in self.STATES},
+            locationmode="USA-states", scope="usa",
+            width=1000,
+            height=700)
+
+        fig.update_layout(showlegend=False)
+        fig.update_traces(
+            hovertemplate=None,
+            hoverinfo='none'
+        )
+
+        fig_scatter = px.scatter_geo(
+            df,
+            lat='LATITUDE',
+            lon='LONGITUDE',
+            hover_data=['STATE', 'STAT_CAUSE_DESCR'],
+            color="FIRE_SIZE",
+            size='FIRE_SIZE',
+            size_max=20,
+            opacity=0.6,
+            width=1000,
+            height=700,
+            range_color=[0, 606945]
+        )
+
+        if focus:
+            fig.update_geos(fitbounds='locations')
+        else:
+            fig.update_geos(visible=False)
+
+        fig_scatter.update_traces(marker=dict(line=dict(width=0)),
+                                  selector=dict(mode='markers'))
+
+        if fig_scatter.data:
+            fig.add_trace(
+                fig_scatter.data[0]
+            )
+
+        fig.layout['coloraxis'] = fig_scatter.layout['coloraxis']
+        fig.update_layout(
+            dragmode=False,
+            transition={'duration': 300, 'easing': 'cubic-in-out'}
+        )
+
+        return fig
+
+    def _make_pie_charts(self,
+                         df: pd.DataFrame) -> Figure:
+
+        pull = list(map(lambda x: 0.1
+                        if x in self.cause_filter
+                        else 0,
+                        self.CAUSES))
+
+        def calculateTextpositions(values):
+            total = sum(values)
+            if total == 0:
+                return 'auto'
+            return [
+                'none' if value / total < 0.02 else 'auto'
+                for value in values
+            ]
+
+        fig = make_subplots(
+            1,
+            2,
+            specs=[[{'type': 'domain'}, {'type': 'domain'}]],
+            subplot_titles=['Total Area', 'Number of incidents'])
+
+        fig.add_trace(
+            go.Pie(
+                labels=self.CAUSES,
+                values=(total_area := [
+                    sum(df[df['STAT_CAUSE_DESCR'] == cause]['FIRE_SIZE'])
+                    for cause in self.CAUSES
+                ]),
+                name='Total Area',
+                textposition=calculateTextpositions(total_area),
+                pull=pull
             ),
-            make_pie_charts(df),
-            f'Focused on: {STATES[focused_state]}')
-    return DEFAULT_GRAPH, make_pie_charts(df), 'Whole country'
+            1,
+            1
+        )
+        fig.add_trace(
+            go.Pie(
+                labels=self.CAUSES,
+                values=(total_count := [
+                    len(df[df['STAT_CAUSE_DESCR'] == cause])
+                    for cause in self.CAUSES
+                ]),
+                name='Number of Fire Area',
+                textposition=calculateTextpositions(total_count),
+                pull=pull
+            ),
+            1,
+            2
+        )
+        fig.update_traces(hole=.4, hoverinfo='label+percent')
+        fig.update_layout(height=600,
+                          width=1000,
+                          title_text='Statistical causes of the fires')
+        fig.update_layout(
+            legend=dict(
+                orientation='h'
+            ),
+            transition={'duration': 300, 'easing': 'cubic-in-out'}
+        )
 
+        assert isinstance(fig, Figure)
+        return fig
 
-def update_causes(cause: str) -> Tuple[Figure, Figure, str]:
-    global curr_cause
-    if curr_cause == cause:
-        curr_cause = None
-    else:
-        curr_cause = cause
-    print(curr_cause)
-    print(len(frame))
-    df = filter_frame(
-        frame,
-        {
-            'STATE': focused_state,
-            'FIRE_YEAR': curr_years
-        }
-    )
+    @staticmethod
+    def _click_to_state(click) -> Optional[str]:
+        if (state := click['points'][0]['location']) is not None:
+            return state
+        return click['points'][0].get('customdata', [None])[0]
 
-    gf = filter_frame(geoframe, {'STATE': focused_state})
-    print(len(df))
-
-    return (make_map(filter_frame(df, {'STAT_CAUSE_DESCR': curr_cause}),
-                     gf,
-                     focused_state is not None),
-            make_pie_charts(df),
-            f'Focused on: {STATES.get(str(focused_state), "Whole country")}')
-
-
-def focus_graph(state) -> Tuple[Figure, Figure, str]:
-    global focused_state
-    if state == focused_state:
-        raise dash.exceptions.PreventUpdate
-
-    focused_state = state
-
-    df = filter_frame(
-        frame,
-        {
-            'STATE': focused_state,
-            'STAT_CAUSE_DESCR': curr_cause,
-            'FIRE_YEAR': curr_years
-        }
-    )
-    gf = filter_frame(geoframe, {'STATE': focused_state})
-
-    assert focused_state is not None
-    return (make_map(df, gf, True,),
-            make_pie_charts(df),
-            f'Focused on: {STATES[focused_state]}')
-
-
-def get_state_from_click(click) -> Optional[str]:
-    if (state := click['points'][0]['location']) is not None:
-        return state
-    return click['points'][0].get('customdata', [None])[0]
-
-
-@app.callback(
-    [Output('map', 'figure'),
-     Output('pie', 'figure'),
-     Output('container', 'children')],
-    [Input('year_range', 'value'),
-     Input('map', 'clickData'),
-     Input('pie', 'clickData'),
-     Input('button', 'n_clicks')]
-)
-def update_graph(years: Tuple[int, int],
-                 click, pie_click,
-                 button: int) -> Tuple[Figure, Figure, str]:
-    global focused_state
-    global curr_cause
-    ctx = dash.callback_context
-    # print(ctx.triggered)
-    # print(ctx.states)
-    # print(ctx.inputs)
-    if ctx.triggered[0]['prop_id'] == 'year_range.value':
-        return update_years(years)
-    if ctx.triggered[0]['prop_id'] == 'pie.clickData':
-        return update_causes(pie_click['points'][0]['label'])
-    if ctx.triggered[0]['prop_id'] == 'map.clickData':
-        if (state := get_state_from_click(click)) is not None:
-            return focus_graph(state)
-        raise dash.exceptions.PreventUpdate
-    if ctx.triggered[0]['prop_id'] == 'button.n_clicks':
-        focused_state = curr_cause = None
-        return (DEFAULT_GRAPH,
-                make_pie_charts(filter_year(frame, *curr_years)),
-                'Whole country')
-    raise dash.exceptions.PreventUpdate
+    def run_server(self, *args, **kwargs):
+        self.app.run_server(*args, **kwargs)
 
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    App('/home/martin/Disk/fires.csv').run_server(debug=True)
