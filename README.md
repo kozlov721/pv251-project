@@ -6,16 +6,15 @@
 ## Preprocessing
 
 The original dataset contains a large amount of columns and therefore was unnecessarily large
-for my needs. For that reason I dropped most of the columns.
-Head of the final table is shown below.
+for my needs. For that reason I dropped most of the columns. Here is the head of the final table.
 
 | LATITUDE  | LONGITUDE   | FIRE_SIZE | FIRE_YEAR | STATE | STAT_CAUSE_DESCR | FIRE_NAME |
 | --------- | ----------- | --------- | --------- | ----- | ---------------- | --------- |
-| 40.036944 | -121.005833 | 0.10      | 2005      | CA    | Miscellaneous    | FOUNTAIN  |
-| 38.933056 | -120.404444 | 0.25      | 2004      | CA    | Lightning        | PIGEON    |
-| 38.984167 | -120.735556 | 0.10      | 2004      | CA    | Debris Burning   | SLACK     |
-| 38.559167 | -119.913333 | 0.10      | 2004      | CA    | Lightning        | DEER      |
-| 38.559167 | -119.933056 | 0.10      | 2004      | CA    | Lightning        | STEVENOT  |
+| 40.036    | -121.005    | 0.10      | 2005      | CA    | Miscellaneous    | FOUNTAIN  |
+| 38.933    | -120.404    | 0.25      | 2004      | CA    | Lightning        | PIGEON    |
+| 38.984    | -120.735    | 0.10      | 2004      | CA    | Debris Burning   | SLACK     |
+| 38.559    | -119.913    | 0.10      | 2004      | CA    | Lightning        | DEER      |
+| 38.559    | -119.933    | 0.10      | 2004      | CA    | Lightning        | STEVENOT  |
 
 No other actions were necessary.
 
