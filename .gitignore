@@ -1,5 +1,4 @@
-fires.csv
-project.ipynb
-states.txt
-.virtual_documents
-.ipynb_checkpoints
+venv
+*.pyc
+.DS_Store
+.env
